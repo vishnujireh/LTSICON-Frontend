@@ -339,7 +339,7 @@ export default function Abstracts() {
             <div className="text-sm">
               {[
                 ["Submission Opens", "1 August 2026"],
-                ["Submission Closes", "15 September 2026"],
+                ["Submission Closes", "30 September 2026"],
                 ["Acceptance Notified", "10 October 2026"],
                 ["Word Limit", "300 words"],
               ].map(([label, value]) => (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { logout } from "../lib/auth.js";
+import { logout } from "../lib/serverAuth.js";
 
 // Profile dropdown shown in the top bar when a delegate is logged in.
 export default function ProfileMenu({ user, compact = false }) {

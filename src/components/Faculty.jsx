@@ -30,7 +30,7 @@ export default function Faculty() {
           </div>
         </div>
 
-        <div className="mt-14">
+        {/* <div className="mt-14">
           <h3 className="mb-8 font-serif text-2xl font-semibold text-[#6E1A2B]">Confirmed Faculty Preview</h3>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-5">
             {preview.map(({ name, role, org }, i) => (
@@ -48,7 +48,7 @@ export default function Faculty() {
             ))}
           </div>
           <p className="mt-8 text-center text-sm italic text-[#6E5C54]">Full faculty roster to be confirmed and published with photographs.</p>
-        </div>
+        </div> */}
       </div>
     </section>
   );

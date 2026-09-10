@@ -3,7 +3,7 @@ const rows = [
   ["Non-Member", "₹15,000", "₹18,000", "₹22,000"],
   ["Fellow / PG Student", "₹7,000", "₹9,000", "₹12,000"],
   ["Nurse / Coordinator", "₹2,000", "₹8,000", "₹3,000"],
-  ["International Delegate", "USD 250", "USD 300", "USD 350"],
+  ["International Delegate", "USD 250 (₹23,617)", "USD 300 (₹28,340)", "USD 350 (₹33,064)"],
   ["Accompanying Person", "₹8,000", "₹10,000", "₹12,000"],
 ];
 
@@ -20,7 +20,7 @@ export default function Registration() {
             Registration
           </span>
           <h2 className="font-serif text-4xl font-bold text-[#6E1A2B] sm:text-5xl">Registration Tariff</h2>
-          <p className="mt-4 text-[#6E5C54]">Fees are indicative and in INR (inclusive of taxes). <em>To be replaced with the approved fee structure.</em></p>
+          {/* <p className="mt-4 text-[#6E5C54]">Fees are indicative and in INR (inclusive of taxes). <em>To be replaced with the approved fee structure.</em></p> */}
         </div>
 
         <div className="overflow-x-auto rounded-2xl border border-[#E7D9BB] bg-white shadow-[0_14px_40px_-24px_rgba(110,26,43,0.35)]">

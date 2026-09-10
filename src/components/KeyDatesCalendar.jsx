@@ -19,7 +19,7 @@ export default function KeyDatesCalendar() {
           <h2 className="font-serif text-4xl font-bold text-[#6E1A2B] sm:text-5xl">Key Dates</h2>
           <p className="mt-4 text-[#6E5C54]">
             Important deadlines for registration, abstract submission and the conference itself.{" "}
-            <em>All key dates are drafted estimates &mdash; confirm before publishing.</em>
+            {/* <em>All key dates are drafted estimates &mdash; confirm before publishing.</em> */}
           </p>
         </div>
 

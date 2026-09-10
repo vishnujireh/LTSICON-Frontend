@@ -53,19 +53,31 @@ export function createRegistration(payload) {
   return request("/registrations", { body: payload });
 }
 
+/** Create a Razorpay order for the given amount (major units, e.g. rupees). */
+export function createPaymentOrder({ amount, currency, reference }) {
+  return request("/payments/order", { body: { amount, currency, reference } });
+}
+
+/** Loads the Razorpay Checkout script once; resolves true when window.Razorpay is ready. */
+export function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+
 /**
- * Final-step payment confirmation for an existing reference.
- * If a `screenshot` (File) is provided it's sent as multipart/form-data with the
- * rest of the payload JSON-encoded in a `payload` field; otherwise plain JSON.
+ * Final-step payment confirmation for an existing reference (JSON).
+ * Includes the verified Razorpay ids (order/payment/signature).
  */
 export function confirmRegistration(reference, payload) {
-  const { screenshot, ...rest } = payload || {};
-  const path = `/registrations/${encodeURIComponent(reference)}`;
-  if (screenshot) {
-    const fd = new FormData();
-    fd.append("payload", JSON.stringify(rest));
-    fd.append("screenshot", screenshot);
-    return request(path, { method: "PUT", body: fd, isForm: true });
-  }
-  return request(path, { method: "PUT", body: rest });
+  return request(`/registrations/${encodeURIComponent(reference)}`, {
+    method: "PUT",
+    body: payload || {},
+  });
 }

@@ -21,6 +21,7 @@ import Contact from './components/Contact.jsx';
 import CtaTile from './components/CtaTile.jsx';
 import Footer from './components/Footer.jsx';
 import RegisterPage from './components/RegisterPage.jsx';
+import ResetPassword from './components/ResetPassword.jsx';
 import { useEffect, useState } from 'react';
 
 export default function App() {
@@ -34,6 +35,11 @@ export default function App() {
 
   if (route === 'register') {
     return <RegisterPage />;
+  }
+
+  // #reset?token=... — password reset landing from the email link.
+  if (route.split('?')[0] === 'reset') {
+    return <ResetPassword />;
   }
 
   return (

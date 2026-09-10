@@ -2,18 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "../../public/logo.svg";
 import intlTelInput from "intl-tel-input";
 import "intl-tel-input/build/css/intlTelInput.css";
+import { getDraft, saveDraft, clearDraft } from "../lib/auth.js";
 import {
-  createAccount,
-  getAccount,
   getCurrentUser,
-  getDraft,
-  saveDraft,
-  clearDraft,
   login,
   onAuthChange,
-} from "../lib/auth.js";
+  register as apiRegister,
+  forgotPassword as apiForgotPassword,
+} from "../lib/serverAuth.js";
 import ProfileMenu from "./ProfileMenu.jsx";
-import { createRegistration as apiCreateRegistration, confirmRegistration as apiConfirmRegistration } from "../lib/api.js";
+import {
+  createRegistration as apiCreateRegistration,
+  confirmRegistration as apiConfirmRegistration,
+  createPaymentOrder as apiCreatePaymentOrder,
+  loadRazorpay,
+} from "../lib/api.js";
 
 /* ---------------------------------- data ---------------------------------- */
 
@@ -22,7 +25,8 @@ const RATES = {
   "Non-Member": { currency: "₹", early: 15000, standard: 18000, spot: 22000 },
   "Fellow / PG Student": { currency: "₹", early: 7000, standard: 9000, spot: 12000 },
   "Nurse / Coordinator": { currency: "₹", early: 2000, standard: 8000, spot: 3000 },
-  "International Delegate": { currency: "$", early: 250, standard: 300, spot: 350 },
+  // Charged in INR (USD 250/300/350 equivalent) so the INR-only gateway works.
+  "International Delegate": { currency: "₹", early: 23617, standard: 28340, spot: 33064 },
 };
 
 const ACCOMPANYING = { currency: "₹", early: 8000, standard: 10000, spot: 12000 };
@@ -88,7 +92,9 @@ const errCls = (error) =>
 export default function RegisterPage() {
   const phase = useMemo(() => currentPhase(), []);
   const [user, setUser] = useState(() => getCurrentUser());
-  const hasAccount = !!getAccount();
+  const hasDraft = !!getDraft();
+  const [forceLogin, setForceLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false); // "Create account" -> use Step 1 form
 
   const [step, setStep] = useState(1);
   const [regId] = useState(() => "LTSI26-" + Math.random().toString(36).slice(2, 8).toUpperCase());
@@ -105,10 +111,10 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({}); // per-field errors for Step 1
 
-  // Step 6 payment proof.
-  const [txnId, setTxnId] = useState("");
-  const [screenshot, setScreenshot] = useState(null);
-  const [payErrors, setPayErrors] = useState({}); // { txnId, screenshot }
+  // Step 6 payment (Razorpay).
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
+  const [orderNo, setOrderNo] = useState(""); // sequential LTSICON_#### assigned on success
 
   const restoredRef = useRef(false);
 
@@ -184,7 +190,7 @@ export default function RegisterPage() {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [step]);
 
-  const createAndContinue = () => {
+  const createAndContinue = async () => {
     const found = validateStep1();
     if (Object.keys(found).length) {
       setErrors(found);
@@ -194,18 +200,18 @@ export default function RegisterPage() {
     }
     setErrors({});
 
-    createAccount({
-      name: form.name, email: form.email, password: form.password,
-      phone: `+${form.dialCode} ${form.phone}`.trim(),
-      designation: form.designation, institution: form.institution,
-      address: form.address, mciNumber: form.mciNumber, mciState: form.mciState,
-    });
+    // Create a real server-side account so the delegate can log in later / on any
+    // device. This is best-effort: it never blocks the actual registration + payment.
+    const res = await apiRegister({ name: form.name, email: form.email, password: form.password });
+    if (!res.ok && /already exists/i.test((res.errors || []).join(" "))) {
+      // Email already registered — ask them to log in instead of creating a new account.
+      setForceLogin(true);
+      setErrors({ email: "An account with this email already exists. Please log in to continue." });
+      document.querySelector('[data-field="email"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
     restoredRef.current = true; // don't overwrite what we just entered
-
-    // Step 1 intentionally stores account + draft only. Do not submit or send a lead email here.
-    // Original backend lead-capture call is intentionally left commented for reference:
-    // apiCreateRegistration({ ... }).catch(() => {});
-
     next();
   };
 
@@ -247,38 +253,29 @@ export default function RegisterPage() {
     }).catch(() => {});
   };
 
-  // Final step (Payment) — validate the payment proof, submit the full
-  // registration with the screenshot, send the confirmation email, show success.
-  const finishAndSubmit = () => {
-    if (!category) return;
+  // Itemised breakdown so the confirmation email can show every amount.
+  const buildBreakdown = () => ({
+    currency: confCurrency,
+    wsCurrency: WS_CUR,
+    guestCurrency: ACCOMPANYING.currency,
+    conferenceLabel: category,
+    conferenceAmount: confAmount,
+    workshops: workshops.map((name) => {
+      const w = WORKSHOPS.find((x) => x.name === name);
+      return { name, amount: w ? w.amount : 0 };
+    }),
+    workshopsTotal: workshopTotal,
+    guestUnit,
+    guestCount: validGuests.length,
+    guestsTotal: guestTotal,
+    grandTotalLabel: totalLabel,
+  });
 
-    // Both payment-proof fields are required.
-    const pe = {};
-    if (!txnId.trim()) pe.txnId = "Transaction number / ID is required.";
-    if (!screenshot) pe.screenshot = "Please upload your payment screenshot.";
-    if (Object.keys(pe).length) { setPayErrors(pe); return; }
-    setPayErrors({});
-
-    // Full itemised breakdown so the confirmation email can show every amount.
-    const breakdown = {
-      currency: confCurrency,
-      wsCurrency: WS_CUR,
-      guestCurrency: ACCOMPANYING.currency,
-      conferenceLabel: category,
-      conferenceAmount: confAmount,
-      workshops: workshops.map((name) => {
-        const w = WORKSHOPS.find((x) => x.name === name);
-        return { name, amount: w ? w.amount : 0 };
-      }),
-      workshopsTotal: workshopTotal,
-      guestUnit,
-      guestCount: validGuests.length,
-      guestsTotal: guestTotal,
-      grandTotalLabel: totalLabel,
-    };
-
-    // Submit registration + payment proof (screenshot) and send the email.
-    apiConfirmRegistration(regId, {
+  // After a verified Razorpay payment: submit the registration + payment ids,
+  // send the confirmation email, and show the success screen. If the save fails,
+  // surface the real reason instead of silently showing success.
+  const submitConfirmed = async (rzp) => {
+    const res = await apiConfirmRegistration(regId, {
       name: form.name, email: form.email,
       phone: `+${form.dialCode} ${form.phone}`.trim(),
       designation: form.designation, institution: form.institution,
@@ -289,19 +286,82 @@ export default function RegisterPage() {
       currency: confCurrency,
       totalAmount: totalsByCurrency[confCurrency] || confAmount || 0,
       phase: phase.key,
-      breakdown,
-      transactionId: txnId.trim(),
-      screenshot, // File — sent as multipart by the API client
-      paid: true,
-    }).catch(() => {});
+      breakdown: buildBreakdown(),
+      razorpay_order_id: rzp.razorpay_order_id,
+      razorpay_payment_id: rzp.razorpay_payment_id,
+      razorpay_signature: rzp.razorpay_signature,
+    });
 
-    setPaid(true);
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (res && res.ok) {
+      if (res.orderNo) setOrderNo(res.orderNo);
+      setPaid(true);
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      // Payment went through but the registration couldn't be saved — tell the user.
+      // eslint-disable-next-line no-console
+      console.error("Registration save failed after payment:", res);
+      const reason = (res && res.errors && res.errors.join(" ")) || "server error";
+      setPayError(
+        `Payment succeeded (Payment ID: ${rzp.razorpay_payment_id}) but saving your ` +
+        `registration failed: ${reason}. Please contact the organisers with this Payment ID.`
+      );
+    }
+  };
+
+  // Final step (Payment) — open Razorpay Checkout for the amount due.
+  const payWithRazorpay = async () => {
+    if (!category) return;
+    setPayError("");
+
+    // Online payment is charged in INR (sum of the ₹ line items).
+    const amountInr = totalsByCurrency["₹"] || (confCurrency === "₹" ? confAmount : 0) || 0;
+    if (amountInr <= 0) {
+      setPayError("Online payment currently supports INR amounts only. Please contact the organisers.");
+      return;
+    }
+
+    setPaying(true);
+    try {
+      const ready = await loadRazorpay();
+      if (!ready) { setPayError("Couldn't load the payment gateway. Check your connection and retry."); return; }
+
+      const order = await apiCreatePaymentOrder({ amount: amountInr, currency: "₹", reference: regId });
+      if (!order.ok || !order.orderId) {
+        setPayError((order.errors && order.errors.join(" ")) || "Couldn't start the payment. Please try again.");
+        return;
+      }
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "LTSICON Chennai 2026",
+        description: `Delegate registration ${regId}`,
+        order_id: order.orderId,
+        prefill: {
+          name: form.name,
+          email: form.email,
+          contact: `+${form.dialCode} ${form.phone}`.trim(),
+        },
+        theme: { color: "#6E1A2B" },
+        handler: (resp) => submitConfirmed(resp),
+        modal: { ondismiss: () => { setPaying(false); setPayError("Payment was cancelled. You can try again."); } },
+      });
+      rzp.on("payment.failed", (resp) => {
+        setPaying(false);
+        setPayError(resp?.error?.description || "Payment failed. Please try again.");
+      });
+      rzp.open();
+    } catch {
+      setPayError("Something went wrong starting the payment. Please try again.");
+    } finally {
+      setPaying(false);
+    }
   };
 
   /* ------- login gate for returning delegates ------- */
-  const showLoginGate = !user && hasAccount;
+  const showLoginGate = !user && (hasDraft || forceLogin) && !showRegister;
 
   return (
     <div className="min-h-[100dvh] bg-[linear-gradient(180deg,var(--cream),var(--sand))]">
@@ -325,7 +385,11 @@ export default function RegisterPage() {
 
       <div className="mx-auto max-w-[1180px] px-5 py-8 lg:px-10 lg:py-12">
         {showLoginGate ? (
-          <LoginGate onError={setError} error={error} />
+          <LoginGate
+            onError={setError}
+            error={error}
+            onCreateAccount={() => { setForceLogin(false); setShowRegister(true); setStep(1); }}
+          />
         ) : (
           <>
             <div className="mb-8">
@@ -348,7 +412,12 @@ export default function RegisterPage() {
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8"><path d="M20 6 9 17l-5-5" /></svg>
                     </div>
                     <h3 className="font-serif text-2xl font-bold text-[#6E1A2B]">Registration has been completed successfully.</h3>
-                    <p className="mx-auto mt-2 max-w-md text-[#6E5C54]">Thank you, {form.name || "Delegate"}. A confirmation and invoice for <b>{regId}</b> will be sent to {form.email || "your email"}.</p>
+                    {orderNo && (
+                      <p className="mx-auto mt-3 max-w-md text-[#6E1A2B]">
+                        Your reference number is <b className="font-serif text-lg">{orderNo}</b>
+                      </p>
+                    )}
+                    <p className="mx-auto mt-2 max-w-md text-[#6E5C54]">Thank you, {form.name || "Delegate"}. A confirmation has been sent to {form.email || "your email"}.</p>
                     {/* <p className="mx-auto mt-2 max-w-md text-[#6E5C54]">Regarding the payment, our team will reach out to you shortly with the details.</p> */}
                     <button onClick={() => { clearDraft(); goHome(); }} className="mt-6 inline-flex items-center rounded-full bg-[#6E1A2B] px-7 py-3 text-sm font-semibold text-[#FBF1DD] transition hover:bg-[#4A1220]">Back to conference site</button>
                   </div>
@@ -522,7 +591,7 @@ export default function RegisterPage() {
                     )}
 
                     {step === 6 && (
-                      <Section title="Step 6 · Payment" desc="Scan the QR to pay, then enter your transaction details to finish.">
+                      <Section title="Step 6 · Payment" desc="Pay securely online with Razorpay to complete your registration.">
                         {/* amount due */}
                         <div className="mb-5 flex items-center justify-between rounded-2xl bg-[#F4ECD9] px-5 py-4">
                           <div>
@@ -532,40 +601,24 @@ export default function RegisterPage() {
                           <span className="font-serif text-2xl font-bold text-[#6E1A2B]">{totalLabel}</span>
                         </div>
 
-                        {/* Scan & pay QR */}
-                        <div className="flex flex-col items-center rounded-2xl border border-[#E7D9BB] bg-white p-5 text-center">
-                          <p className="mb-3 text-sm font-semibold text-[#6E1A2B]">Scan &amp; pay with any UPI app</p>
-                          <img src="/payment-qr.png" alt="Scan to pay — SUJEEVAN TRUST UPI QR" className="max-w-[100px] w-xs rounded-xl" />
-                          <p className="mt-3 text-xs text-[#6E5C54]">UPI ID: <b className="text-[#6E1A2B]">SUJEEVANTRUST@iob</b></p>
-                        </div>
+                        {payError && (
+                          <p className="mb-4 rounded-lg bg-[#FBEBEB] px-3 py-2 text-sm font-medium text-[#B3261E]">{payError}</p>
+                        )}
 
-                        {/* payment proof — both required */}
-                        <div className="mt-6 grid gap-4">
-                          <label className="flex flex-col">
-                            <span className={labelClass}>Transaction number / ID <span className="text-[#B58A1E]">*</span></span>
-                            <input
-                              className={errCls(payErrors.txnId)}
-                              value={txnId}
-                              onChange={(e) => { setTxnId(e.target.value); setPayErrors((p) => (p.txnId ? { ...p, txnId: undefined } : p)); }}
-                              placeholder="e.g. UPI / IMPS reference number"
-                            />
-                            {payErrors.txnId && <span className="mt-1 text-xs font-medium text-[#B3261E]">{payErrors.txnId}</span>}
-                          </label>
+                        <button
+                          type="button"
+                          onClick={payWithRazorpay}
+                          disabled={paying || !category}
+                          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
+                          {paying ? "Processing…" : `Pay ${totalLabel} securely`}
+                        </button>
+                        <p className="mt-3 text-center text-xs text-[#6E5C54]">
+                          Secured by Razorpay · UPI, cards &amp; net-banking supported.
+                        </p>
 
-                          <label className="flex flex-col">
-                            <span className={labelClass}>Payment screenshot <span className="text-[#B58A1E]">*</span></span>
-                            <input
-                              type="file"
-                              accept="image/*,application/pdf"
-                              onChange={(e) => { setScreenshot(e.target.files?.[0] || null); setPayErrors((p) => (p.screenshot ? { ...p, screenshot: undefined } : p)); }}
-                              className={`${errCls(payErrors.screenshot)} py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-[#6E1A2B] file:px-3 file:py-1.5 file:text-white`}
-                            />
-                            {screenshot && <span className="mt-1 text-xs text-[#6E5C54]">Selected: {screenshot.name}</span>}
-                            {payErrors.screenshot && <span className="mt-1 text-xs font-medium text-[#B3261E]">{payErrors.screenshot}</span>}
-                          </label>
-                        </div>
-
-                        <Nav onBack={back} onNext={finishAndSubmit} nextLabel="Finish & Submit" />
+                        <Nav onBack={back} hideNext />
                       </Section>
                     )}
 
@@ -621,38 +674,92 @@ function PhoneInput({ form, setForm }) {
 
 /* ------------------------------ login gate -------------------------------- */
 
-function LoginGate({ onError, error }) {
-  const [email, setEmail] = useState(getAccount()?.email || "");
+function LoginGate({ onError, error, onCreateAccount }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState("login"); // "login" | "forgot"
+  const [notice, setNotice] = useState("");
+  const [noticeOk, setNoticeOk] = useState(true); // true = success (green), false = error (red)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    const res = login(email, password);
-    if (!res.ok) onError(res.error);
-    else onError("");
+    setBusy(true);
+    const res = await login(email, password);
+    setBusy(false);
+    onError(res.ok ? "" : (res.errors && res.errors.join(" ")) || "Login failed.");
+  };
+
+  const submitForgot = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const res = await apiForgotPassword(email);
+    setBusy(false);
+    if (res.ok) {
+      setNoticeOk(true);
+      setNotice(res.message || "A password-reset link has been sent to your email. Check your inbox.");
+    } else {
+      setNoticeOk(false);
+      setNotice((res.errors && res.errors.join(" ")) || "This email is not registered.");
+    }
   };
 
   return (
     <div className="mx-auto max-w-md py-6">
       <div className="mb-6 text-center">
         <span className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#8A6A12]">
-          <span className="h-px w-6 bg-[#8A6A12]" /> Welcome back
+          <span className="h-px w-6 bg-[#8A6A12]" /> {mode === "forgot" ? "Reset password" : "Welcome back"}
         </span>
-        <h1 className="mt-2 font-serif text-3xl font-bold text-[#6E1A2B]">Log in to continue</h1>
-        <p className="mt-1.5 text-sm text-[#6E5C54]">You started a registration earlier. Log in to pick up where you left off and complete payment.</p>
+        <h1 className="mt-2 font-serif text-3xl font-bold text-[#6E1A2B]">
+          {mode === "forgot" ? "Forgot your password?" : "Log in to continue"}
+        </h1>
+        <p className="mt-1.5 text-sm text-[#6E5C54]">
+          {mode === "forgot"
+            ? "Enter your email and we'll send you a link to set a new password."
+            : "Log in to pick up your registration and complete payment."}
+        </p>
       </div>
-      <form onSubmit={submit} className="rounded-2xl border border-[#E7D9BB] bg-white p-6 shadow-[0_18px_50px_-30px_rgba(110,26,43,0.5)] sm:p-8">
-        <label className="mb-4 block">
-          <span className={labelClass}>Email</span>
-          <input type="email" required className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@institution.org" />
-        </label>
-        <label className="block">
-          <span className={labelClass}>Password</span>
-          <input type="password" required className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" />
-        </label>
-        {error && <p className="mt-3 rounded-lg bg-[#FBEBEB] px-3 py-2 text-sm font-medium text-[#B3261E]">{error}</p>}
-        <button type="submit" className="mt-6 flex w-full items-center justify-center rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220]">Log in & resume</button>
-      </form>
+
+      {mode === "forgot" ? (
+        <form onSubmit={submitForgot} className="rounded-2xl border border-[#E7D9BB] bg-white p-6 shadow-[0_18px_50px_-30px_rgba(110,26,43,0.5)] sm:p-8">
+          <label className="block">
+            <span className={labelClass}>Email</span>
+            <input type="email" required className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@institution.org" />
+          </label>
+          {notice && (
+            <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-medium ${noticeOk ? "bg-[#EAF6EC] text-[#1f7a3d]" : "bg-[#FBEBEB] text-[#B3261E]"}`}>{notice}</p>
+          )}
+          <button type="submit" disabled={busy} className="mt-6 flex w-full items-center justify-center rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220] disabled:opacity-50">
+            {busy ? "Sending…" : "Send reset link"}
+          </button>
+          <p className="mt-4 rounded-lg bg-[#F4ECD9] px-3 py-2 text-center text-xs text-[#6E5C54]">
+            No account yet?{" "}
+            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="font-semibold text-[#8A6A12] underline underline-offset-2 hover:text-[#6E1A2B]">Create one</button>
+            {" "}— a reset link is only sent if the email already has an account.
+          </p>
+          <button type="button" onClick={() => { setMode("login"); setNotice(""); }} className="mt-3 w-full text-center text-sm font-semibold text-[#8A6A12] hover:text-[#6E1A2B]">Back to login</button>
+        </form>
+      ) : (
+        <form onSubmit={submit} className="rounded-2xl border border-[#E7D9BB] bg-white p-6 shadow-[0_18px_50px_-30px_rgba(110,26,43,0.5)] sm:p-8">
+          <label className="mb-4 block">
+            <span className={labelClass}>Email</span>
+            <input type="email" required className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@institution.org" />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Password</span>
+            <input type="password" required className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" />
+          </label>
+          {error && <p className="mt-3 rounded-lg bg-[#FBEBEB] px-3 py-2 text-sm font-medium text-[#B3261E]">{error}</p>}
+          <button type="submit" disabled={busy} className="mt-6 flex w-full items-center justify-center rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220] disabled:opacity-50">
+            {busy ? "Logging in…" : "Log in & continue"}
+          </button>
+          <div className="mt-4 flex items-center justify-between text-sm font-semibold">
+            {/* Create account uses the existing Step 1 registration form, not a separate page. */}
+            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="text-[#8A6A12] hover:text-[#6E1A2B]">Create an account</button>
+            <button type="button" onClick={() => { setMode("forgot"); onError(""); }} className="text-[#8A6A12] hover:text-[#6E1A2B]">Forgot password?</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

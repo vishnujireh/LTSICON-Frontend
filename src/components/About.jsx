@@ -12,7 +12,7 @@ export default function About() {
         <div className="mt-14">
           <h3 className="mb-4 font-serif text-2xl font-semibold text-[#6E1A2B]">About the Liver Transplantation Society of India (LTSI)</h3>
           <p className="text-[#6E5C54]">The Liver Transplantation Society of India is the national professional body dedicated to advancing the science, practice and outcomes of liver transplantation in India. Through its annual conference, consensus initiatives, workshops and educational programmes, the Society fosters research, sets standards of care and nurtures the next generation of transplant professionals.</p>
-          <p className="mt-2 text-sm italic text-[#6E5C54]">To be confirmed with the official LTSI description.</p>
+          {/* <p className="mt-2 text-sm italic text-[#6E5C54]">To be confirmed with the official LTSI description.</p> */}
         </div>
 
         <div className="mt-14">

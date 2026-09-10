@@ -87,3 +87,12 @@ export function getDraft() {
 export function clearDraft() {
   remove(DRAFT_KEY);
 }
+
+// Full reset after a completed registration: clears the account, session and
+// draft so the next visit starts a brand-new registration (no login gate).
+export function resetRegistration() {
+  remove(DRAFT_KEY);
+  remove(SESSION_KEY);
+  remove(ACCOUNT_KEY);
+  notifyAuthChange();
+}

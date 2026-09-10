@@ -14,7 +14,8 @@ import karthik from '../../public/karthik-mathivanan.png';
 import vimalraj from '../../public/vimalraj-velayutham.png';
 import manjunath from '../../public/manjunath.png';
 import kulaseharan from '../../public/kulaseharan.png';
-import swaminathan from '../../public/swaminathan.png'; 
+import swaminathan from '../../public/swaminathan.png';
+import venkatesh from '../../public/venkatesh-bs.jpeg';
 export default function Committee() {
   const groups = [
     {
@@ -36,6 +37,7 @@ export default function Committee() {
       },
     ],
   },
+  
     {
       title: 'Organising Committee',
       members: [
@@ -97,6 +99,16 @@ export default function Committee() {
         }, 
       ],
     },
+    {
+    title: 'Scientific Committee',
+    members: [
+      {
+        name: 'Dr Venkatesh B S',
+        // role: 'Organizing Patron',
+        image: venkatesh,
+      },
+    ],
+  },
   ];
 
   return (

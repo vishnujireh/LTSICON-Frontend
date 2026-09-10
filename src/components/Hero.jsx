@@ -67,7 +67,7 @@ export default function Hero() {
           Pioneering Liver Transplantation: Innovation, Research &amp; Technology
         </p> */}
         <p className="mx-auto mb-7 max-w-[600px] text-lg text-[#6E5C54]">
-          LTSICON Chennai 2026 unites transplant surgeons, hepatologists, anaesthesiologists, radiologists, pathologists and coordinators in Chennai — India’s liver transplant capital — for four days of science, surgery and collaboration.
+          LTSICON Chennai 2026 unites transplant surgeons, hepatologists, anaesthesiologists, radiologists, pathologists and coordinators in One of India’s foremost centres of liver transplantation — for four days of science, surgery and collaboration.
         </p>
         <div className="mb-8 flex w-full flex-col items-center gap-3 text-[#6E1A2B] sm:flex-row sm:flex-wrap sm:justify-center sm:gap-6">
           <div className="flex items-start gap-2.5 text-left font-bold text-lg">
