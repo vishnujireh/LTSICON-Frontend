@@ -97,18 +97,13 @@ export default function Committee() {
           name:'Dr. Kulaseharan V H',
           image:kulaseharan
         }, 
-      ],
-    },
-    {
-    title: 'Scientific Committee',
-    members: [
-      {
+        {
         name: 'Dr Venkatesh B S',
-        // role: 'Organizing Patron',
         image: venkatesh,
       },
-    ],
-  },
+      ],
+    },
+    
   ];
 
   return (

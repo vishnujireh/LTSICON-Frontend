@@ -21,10 +21,10 @@ import {
 /* ---------------------------------- data ---------------------------------- */
 
 const RATES = {
-  "LTSI Member": { currency: "₹", early: 12000, standard: 15000, spot: 18000 },
-  "Non-Member": { currency: "₹", early: 15000, standard: 18000, spot: 22000 },
-  "Fellow / PG Student": { currency: "₹", early: 7000, standard: 9000, spot: 12000 },
-  "Nurse / Coordinator": { currency: "₹", early: 2000, standard: 8000, spot: 3000 },
+  "LTSI Member": { currency: "₹", early: 10000, standard: 12000, spot: 15000 },
+  "Non-Member": { currency: "₹", early: 15000, standard: 18000, spot: 20000 },
+  "Fellow / PG Student": { currency: "₹", early: 5000, standard: 7000, spot: 9000 },
+  "Nurse / Coordinator": { currency: "₹", early: 2000, standard: 3000, spot: 3000 },
   // Charged in INR (USD 250/300/350 equivalent) so the INR-only gateway works.
   "International Delegate": { currency: "₹", early: 23617, standard: 28340, spot: 33064 },
 };
@@ -183,6 +183,16 @@ export default function RegisterPage() {
     ? Object.entries(totalsByCurrency).map(([c, a]) => money(c, a)).join(" + ")
     : "—";
 
+  /* ------- GST (18%) ------- */
+  const GST_RATE = 0.18;
+  // All fees are in INR, so GST applies to the full subtotal.
+  const subtotalAmount = Object.values(totalsByCurrency).reduce((s, a) => s + a, 0);
+  const gstAmount = Math.round(subtotalAmount * GST_RATE * 100) / 100;
+  const grandTotalWithGst = Math.round((subtotalAmount + gstAmount) * 100) / 100;
+  const subtotalLabel = subtotalAmount ? money("₹", subtotalAmount) : "—";
+  const gstLabel = money("₹", gstAmount);
+  const grandTotalLabel = grandTotalWithGst ? money("₹", grandTotalWithGst) : "—";
+
   /* ------- nav ------- */
   const next = () => setStep((s) => Math.min(6, s + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
@@ -234,7 +244,12 @@ export default function RegisterPage() {
       guestUnit,
       guestCount: validGuests.length,
       guestsTotal: guestTotal,
-      grandTotalLabel: totalLabel,
+      subtotal: subtotalAmount,
+      subtotalLabel,
+      gstRate: 18,
+      gstAmount,
+      gstLabel,
+      grandTotalLabel,
     };
 
     apiConfirmRegistration(regId, {
@@ -246,7 +261,7 @@ export default function RegisterPage() {
       workshops,
       guests: validGuests,
       currency: confCurrency,
-      totalAmount: totalsByCurrency[confCurrency] || confAmount || 0,
+      totalAmount: grandTotalWithGst,
       phase: phase.key,
       breakdown,
       paid: true,
@@ -268,7 +283,13 @@ export default function RegisterPage() {
     guestUnit,
     guestCount: validGuests.length,
     guestsTotal: guestTotal,
-    grandTotalLabel: totalLabel,
+    // GST 18% on the subtotal; grand total is GST-inclusive (what's charged).
+    subtotal: subtotalAmount,
+    subtotalLabel,
+    gstRate: 18,
+    gstAmount,
+    gstLabel,
+    grandTotalLabel,
   });
 
   // After a verified Razorpay payment: submit the registration + payment ids,
@@ -284,7 +305,7 @@ export default function RegisterPage() {
       workshops,
       guests: validGuests,
       currency: confCurrency,
-      totalAmount: totalsByCurrency[confCurrency] || confAmount || 0,
+      totalAmount: grandTotalWithGst, // GST-inclusive amount actually charged
       phase: phase.key,
       breakdown: buildBreakdown(),
       razorpay_order_id: rzp.razorpay_order_id,
@@ -314,8 +335,8 @@ export default function RegisterPage() {
     if (!category) return;
     setPayError("");
 
-    // Online payment is charged in INR (sum of the ₹ line items).
-    const amountInr = totalsByCurrency["₹"] || (confCurrency === "₹" ? confAmount : 0) || 0;
+    // Charge the GST-inclusive grand total (INR).
+    const amountInr = grandTotalWithGst || 0;
     if (amountInr <= 0) {
       setPayError("Online payment currently supports INR amounts only. Please contact the organisers.");
       return;
@@ -567,16 +588,23 @@ export default function RegisterPage() {
                             {!catRate && !workshops.length && !validGuests.length && (
                               <p className="text-sm text-[#6E5C54]">Nothing selected yet.</p>
                             )}
+
+                            {subtotalAmount > 0 && (
+                              <div className="mt-2 space-y-2 border-t border-[#E7D9BB] pt-3">
+                                <TotalLine label="Subtotal" value={subtotalLabel} />
+                                <TotalLine label="GST (18%)" value={gstLabel} />
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center justify-between gap-4 bg-[#6E1A2B] px-5 py-4 text-white">
                             <div>
                               <span className="font-serif text-lg font-semibold">Grand Total</span>
                               <span className="mt-0.5 block text-[0.7rem] uppercase tracking-wide text-white/60">
-                                {phase.label} phase · incl. all selections
+                                {phase.label} phase · incl. 18% GST
                               </span>
                             </div>
-                            <span className="text-right font-serif text-2xl font-bold text-[#E7C979]">{totalLabel}</span>
+                            <span className="text-right font-serif text-2xl font-bold text-[#E7C979]">{grandTotalLabel}</span>
                           </div>
                         </div>
                         {Object.keys(totalsByCurrency).length > 1 && (
@@ -596,9 +624,9 @@ export default function RegisterPage() {
                         <div className="mb-5 flex items-center justify-between rounded-2xl bg-[#F4ECD9] px-5 py-4">
                           <div>
                             <span className="font-semibold text-[#6E1A2B]">Amount to pay</span>
-                            <span className="mt-0.5 block text-xs text-[#6E5C54]">{phase.label} phase</span>
+                            <span className="mt-0.5 block text-xs text-[#6E5C54]">{phase.label} phase · incl. 18% GST</span>
                           </div>
-                          <span className="font-serif text-2xl font-bold text-[#6E1A2B]">{totalLabel}</span>
+                          <span className="font-serif text-2xl font-bold text-[#6E1A2B]">{grandTotalLabel}</span>
                         </div>
 
                         {payError && (
@@ -612,7 +640,7 @@ export default function RegisterPage() {
                           className="flex w-full items-center justify-center gap-2 rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
-                          {paying ? "Processing…" : `Pay ${totalLabel} securely`}
+                          {paying ? "Processing…" : `Pay ${grandTotalLabel} securely`}
                         </button>
                         <p className="mt-3 text-center text-xs text-[#6E5C54]">
                           Secured by Razorpay · UPI, cards &amp; net-banking supported.
@@ -734,7 +762,7 @@ function LoginGate({ onError, error, onCreateAccount }) {
           </button>
           <p className="mt-4 rounded-lg bg-[#F4ECD9] px-3 py-2 text-center text-xs text-[#6E5C54]">
             No account yet?{" "}
-            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="font-semibold text-[#8A6A12] underline underline-offset-2 hover:text-[#6E1A2B]">Create one</button>
+            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="font-semibold text-[#8A6A12] underline underline-offset-2 hover:text-[#6E1A2B]">Register Now</button>
             {" "}— a reset link is only sent if the email already has an account.
           </p>
           <button type="button" onClick={() => { setMode("login"); setNotice(""); }} className="mt-3 w-full text-center text-sm font-semibold text-[#8A6A12] hover:text-[#6E1A2B]">Back to login</button>
@@ -755,7 +783,7 @@ function LoginGate({ onError, error, onCreateAccount }) {
           </button>
           <div className="mt-4 flex items-center justify-between text-sm font-semibold">
             {/* Create account uses the existing Step 1 registration form, not a separate page. */}
-            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="text-[#8A6A12] hover:text-[#6E1A2B]">Create an account</button>
+            <button type="button" onClick={() => onCreateAccount && onCreateAccount()} className="text-[#8A6A12] hover:text-[#6E1A2B]">Register Now</button>
             <button type="button" onClick={() => { setMode("forgot"); onError(""); }} className="text-[#8A6A12] hover:text-[#6E1A2B]">Forgot password?</button>
           </div>
         </form>

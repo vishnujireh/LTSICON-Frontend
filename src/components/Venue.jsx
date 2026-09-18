@@ -102,7 +102,7 @@ export default function Venue() {
             <h2 className="font-serif text-4xl font-bold text-[#6E1A2B] sm:text-5xl">Radisson Blu Resort Temple Bay</h2>
             <p className="mt-4 text-[#6E5C54]">LTSICON 2026 will be hosted at the Radisson Blu Resort Temple Bay in Mamallapuram (Mahabalipuram) &mdash; a beachfront resort on the Bay of Bengal, set beside the UNESCO World Heritage Shore Temple. It pairs world-class conference facilities with the calm of the coast, just south of Chennai along the East Coast Road.</p>
             <ul className="mt-5 space-y-2.5">
-              {["Beachfront resort on the Bay of Bengal", "Conference halls, workshop zones and an exhibition area", "Adjacent to the historic Mamallapuram monuments", "About 1 hour from Chennai International Airport via the scenic ECR"].map((t) => (
+              {["Beachfront resort on the Bay of Bengal", "Conference halls, workshop zones and an exhibition area", "Adjacent to the historic Mamallapuram monuments", "About 60 to 90 minutes from Chennai International Airport via the scenic ECR"].map((t) => (
                 <li key={t} className={bullet}>{t}</li>
               ))}
             </ul>
@@ -112,7 +112,7 @@ export default function Venue() {
         <div className="mt-14" id="accommodation">
           <h3 className="mb-4 font-serif text-2xl font-semibold text-[#6E1A2B]">Accommodation</h3>
           <p className="text-[#6E5C54]">Curated partner hotels across luxury, premium and comfort tiers near the venue.</p>
-          <p className="mt-3 text-sm italic text-[#6E5C54]">To be replaced with confirmed hotels, distances and negotiated rates.</p>
+          {/* <p className="mt-3 text-sm italic text-[#6E5C54]">To be replaced with confirmed hotels, distances and negotiated rates.</p> */}
         </div>
 
         <div className="mt-14" id="travel">

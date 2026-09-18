@@ -1,8 +1,8 @@
 const rows = [
-  ["LTSI Member", "₹12,000", "₹15,000", "₹18,000"],
-  ["Non-Member", "₹15,000", "₹18,000", "₹22,000"],
-  ["Fellow / PG Student", "₹7,000", "₹9,000", "₹12,000"],
-  ["Nurse / Coordinator", "₹2,000", "₹8,000", "₹3,000"],
+  ["LTSI Member", "₹10,000", "₹12,000", "₹15,000"],
+  ["Non-Member", "₹15,000", "₹18,000", "₹20,000"],
+  ["Fellow / PG Student", "₹5,000", "₹7,000", "₹9,000"],
+  ["Nurse / Coordinator", "₹2,000", "₹3,000", "₹3,000"],
   ["International Delegate", "USD 250 (₹23,617)", "USD 300 (₹28,340)", "USD 350 (₹33,064)"],
   ["Accompanying Person", "₹8,000", "₹10,000", "₹12,000"],
 ];
@@ -20,14 +20,19 @@ export default function Registration() {
             Registration
           </span>
           <h2 className="font-serif text-4xl font-bold text-[#6E1A2B] sm:text-5xl">Registration Tariff</h2>
-          {/* <p className="mt-4 text-[#6E5C54]">Fees are indicative and in INR (inclusive of taxes). <em>To be replaced with the approved fee structure.</em></p> */}
+          <div className="mt-5 flex justify-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#C9A227]/60 bg-[#F3E7C6] px-5 py-2.5 text-sm font-semibold text-[#6E1A2B]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-[#8A6A12]"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+              18% GST Excluded - GST will be added at checkout.
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto rounded-2xl border border-[#E7D9BB] bg-white shadow-[0_14px_40px_-24px_rgba(110,26,43,0.35)]">
           <table className="w-full min-w-[720px] border-collapse bg-white">
             <thead>
               <tr>
-                {["Category", "Early Bird (to 31 Oct)", "Standard (to 30 Nov)", "Spot"].map((h) => (
+                {["Category", "Early Bird (upto 31 Oct)", "Standard (upto 30 Nov)", "Spot"].map((h) => (
                   <th key={h} className="whitespace-nowrap border-b border-[#EDEDF0] bg-[#F5F5F7] px-6 py-4 text-left text-sm font-semibold text-[#1D1D1F]">{h}</th>
                 ))}
               </tr>

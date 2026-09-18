@@ -3,7 +3,7 @@ const dates = [
   { month: "Aug", day: "10", year: "2026", label: "Call for Abstracts" },
   { month: "Sep", day: "30", year: "2026", label: "Abstract Submission Deadline" },
   { month: "Oct", day: "30", year: "2026", label: "Early-Bird Registration Closes" },
-  { month: "Dec", day: "10", year: "2026", label: "LTSI Consensus Meeting" },
+  { month: "Dec", day: "10", year: "2026", label: "Consensus Meeting & Pre-conference Workshops" },
   { month: "Dec", day: "11–13", year: "2026", label: "LTSICON Chennai 2026" },
 ];
 

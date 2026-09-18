@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Logo from '../../public/logo.svg';
+import itlogo from '../../public/logo-r.png';
 import { openRegister } from './RegisterModal.jsx';
 import { getCurrentUser, onAuthChange } from '../lib/auth.js';
 import ProfileMenu from './ProfileMenu.jsx';
@@ -7,8 +8,9 @@ import ProfileMenu from './ProfileMenu.jsx';
 const links = [
   { href: '#home', label: 'Home' },
   { href: '#about', label: 'About' },
+  { href: '#organizer', label: 'Organizer' },
   { href: '#committee', label: 'Committee' },
-  { href: '#faculty', label: 'Faculty' },
+  // { href: '#faculty', label: 'Faculty' },
   { href: '#program', label: 'Program' },
   { href: '#abstracts', label: 'Abstracts' },
   { href: '#venue', label: 'Venue' },
@@ -25,7 +27,7 @@ export default function Header() {
     <header className="sticky top-0 z-50 border-b border-[#E7D9BB] bg-[rgba(251,245,233,0.92)] px-5 py-2 backdrop-blur lg:px-10 xl:px-20 2xl:px-32">
       <div className="mx-auto flex items-center justify-between">
         <a href="#home" className="flex items-center">
-          <img src={Logo} alt="LTSICON Chennai 2026" className="h-16 w-auto sm:h-20 lg:h-24" />
+          <img src={itlogo} alt="LTSICON Chennai 2026" className="h-12 w-auto sm:h-16 lg:h-16" />
         </a>
 
         <nav className="hidden items-center gap-7 text-sm font-medium text-[#6E1A2B] md:flex">
@@ -60,6 +62,9 @@ export default function Header() {
             {open ? <path d="M6 6l12 12M18 6L6 18" /> : <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>}
           </svg>
         </button>
+         <a href="#home" className="flex items-center">
+          <img src={Logo} alt="LTSICON Chennai 2026" className="h-12 w-auto sm:h-16 lg:h-16" />
+        </a>
       </div>
 
       {open && (
