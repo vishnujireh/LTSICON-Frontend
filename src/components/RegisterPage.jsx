@@ -15,8 +15,11 @@ import {
   createRegistration as apiCreateRegistration,
   confirmRegistration as apiConfirmRegistration,
   createPaymentOrder as apiCreatePaymentOrder,
+  myRegistrationSummary as apiMyRegistrationSummary,
+  markRegistrationFailed as apiMarkRegistrationFailed,
   loadRazorpay,
 } from "../lib/api.js";
+import { navigate } from "../lib/nav.js";
 
 /* ---------------------------------- data ---------------------------------- */
 
@@ -57,7 +60,7 @@ const MCI_STATES = [
 
 const STEPS = [
   { n: 1, label: "Your Details", sub: "Personal & account" },
-  { n: 2, label: "Category", sub: "Delegate type & fee" },
+  { n: 2, label: "Category", sub: "Type & fee" },
   { n: 3, label: "Workshops", sub: "Pre-conference" },
   { n: 4, label: "Accompanying", sub: "Guests" },
   { n: 5, label: "Summary", sub: "Review" },
@@ -101,11 +104,14 @@ export default function RegisterPage() {
 
   const [form, setForm] = useState({
     name: "", email: "", phone: "", dialCode: "91", iso2: "in",
-    designation: "", institution: "", address: "", mciNumber: "", mciState: "", password: "",
+    designation: "", institution: "", address: "", mciNumber: "", mciState: "", ltsiMemberNo: "", password: "",
   });
   const [category, setCategory] = useState("");
   const [workshops, setWorkshops] = useState([]);
   const [guests, setGuests] = useState([]);
+  // Add-on flow: a returning, already-paid delegate buying only workshops later.
+  const [addon, setAddon] = useState(false);
+  const [addonInfo, setAddonInfo] = useState(null); // { registered, name, category, parentRef, purchasedWorkshops }
   const [paid, setPaid] = useState(false); // kept for compatibility with the previously shown success state
   const [submitted, setSubmitted] = useState(false); // final submission done -> show success
   const [error, setError] = useState("");
@@ -132,12 +138,86 @@ export default function RegisterPage() {
     else if (!/\S+@\S+\.\S+/.test(form.email)) next.email = "Please enter a valid email address.";
     if (!form.designation.trim()) next.designation = "Designation is required.";
     if (!form.institution.trim()) next.institution = "Institution is required.";
-    if (!form.password) next.password = "Password is required.";
-    else if (form.password.length < 6) next.password = "Password must be at least 6 characters.";
+    // Password is only needed when creating a new account (not for a logged-in user).
+    if (!user) {
+      if (!form.password) next.password = "Password is required.";
+      else if (form.password.length < 6) next.password = "Password must be at least 6 characters.";
+    }
     return next;
   };
 
   useEffect(() => onAuthChange(() => setUser(getCurrentUser())), []);
+
+  // When a delegate is logged in, check if they already have a paid registration
+  // (so we can offer a workshops-only add-on purchase).
+  useEffect(() => {
+    if (!user) { setAddonInfo(null); return; }
+    let alive = true;
+    apiMyRegistrationSummary().then((res) => {
+      if (alive && res && res.ok) setAddonInfo(res);
+    });
+    return () => { alive = false; };
+  }, [user]);
+
+  const purchasedWorkshops = addonInfo?.purchasedWorkshops || [];
+  // Category is locked once the delegate already has a paid conference registration.
+  const categoryLocked = !!addonInfo?.registered;
+
+  // Pre-fill Steps 1 & 2 with the returning delegate's existing details, so they
+  // can review/update rather than retype. Runs once; won't clobber a draft.
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!addonInfo?.registered || prefilledRef.current) return;
+    prefilledRef.current = true;
+    if (form.name) return; // an in-progress draft was restored — leave it alone
+
+    // Best-effort split of a stored "+91 9876543210" phone into code + number.
+    let dialCode = "91";
+    let phone = "";
+    const raw = String(addonInfo.phone || "").trim();
+    if (raw.startsWith("+")) {
+      const sp = raw.indexOf(" ");
+      if (sp > 0) { dialCode = raw.slice(1, sp); phone = raw.slice(sp + 1).replace(/\s+/g, ""); }
+      else { phone = raw.slice(1); }
+    } else {
+      phone = raw.replace(/\s+/g, "");
+    }
+
+    setForm((f) => ({
+      ...f,
+      name: addonInfo.name || f.name,
+      email: addonInfo.email || f.email,
+      phone: phone || f.phone,
+      dialCode: dialCode || f.dialCode,
+      designation: addonInfo.designation || f.designation,
+      institution: addonInfo.institution || f.institution,
+      address: addonInfo.address || f.address,
+      mciNumber: addonInfo.mciNumber || f.mciNumber,
+      mciState: addonInfo.mciState || f.mciState,
+      ltsiMemberNo: addonInfo.ltsiMemberNo || f.ltsiMemberNo,
+    }));
+    setCategory(addonInfo.category || "");
+  }, [addonInfo, form.name]);
+
+  // Enter the add-on flow: skip Details + Category, go straight to Workshops.
+  const startAddon = () => {
+    setAddon(true);
+    setCategory("");
+    setWorkshops([]);
+    setGuests([]);
+    setForm((f) => ({ ...f, name: addonInfo?.name || user?.name || f.name, email: user?.email || f.email }));
+    restoredRef.current = true; // don't let the draft-restore effect clobber this
+    setStep(3);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  const cancelAddon = () => {
+    setAddon(false);
+    setWorkshops([]);
+    setGuests([]);
+    setStep(2);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
 
   // Restore an in-progress registration once the user is logged in.
   useEffect(() => {
@@ -154,10 +234,11 @@ export default function RegisterPage() {
     }
   }, [user]);
 
-  // Persist the draft as the delegate progresses.
+  // Persist the draft as the delegate progresses (not during an add-on purchase,
+  // so the add-on selections don't overwrite their original registration draft).
   useEffect(() => {
-    if (user) saveDraft({ step, form, category, workshops, guests });
-  }, [user, step, form, category, workshops, guests]);
+    if (user && !addon) saveDraft({ step, form, category, workshops, guests });
+  }, [user, addon, step, form, category, workshops, guests]);
 
   /* ------- pricing ------- */
   const catRate = category ? RATES[category] : null;
@@ -195,8 +276,9 @@ export default function RegisterPage() {
 
   /* ------- nav ------- */
   const next = () => setStep((s) => Math.min(6, s + 1));
-  const back = () => setStep((s) => Math.max(1, s - 1));
-  const goHome = () => { window.location.hash = ""; };
+  // In add-on mode, steps 1 (details) and 2 (category) are skipped.
+  const back = () => setStep((s) => Math.max(addon ? 3 : 1, s - 1));
+  const goHome = () => { navigate("/"); };
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [step]);
 
@@ -209,6 +291,10 @@ export default function RegisterPage() {
       return;
     }
     setErrors({});
+
+    // Already logged in (e.g. a returning delegate updating details) — no need to
+    // create an account; just continue to the next step.
+    if (user) { restoredRef.current = true; next(); return; }
 
     // Create a real server-side account so the delegate can log in later / on any
     // device. This is best-effort: it never blocks the actual registration + payment.
@@ -258,11 +344,14 @@ export default function RegisterPage() {
       designation: form.designation, institution: form.institution,
       address: form.address, mciNumber: form.mciNumber, mciState: form.mciState,
       category,
+      ltsiMemberNo: form.ltsiMemberNo,
       workshops,
       guests: validGuests,
       currency: confCurrency,
       totalAmount: grandTotalWithGst,
       phase: phase.key,
+      regType: addon ? "addon" : "full",
+      parentRef: addon ? addonInfo?.parentRef : undefined,
       breakdown,
       paid: true,
     }).catch(() => {});
@@ -302,11 +391,14 @@ export default function RegisterPage() {
       designation: form.designation, institution: form.institution,
       address: form.address, mciNumber: form.mciNumber, mciState: form.mciState,
       category,
+      ltsiMemberNo: form.ltsiMemberNo,
       workshops,
       guests: validGuests,
       currency: confCurrency,
       totalAmount: grandTotalWithGst, // GST-inclusive amount actually charged
       phase: phase.key,
+      regType: addon ? "addon" : "full",
+      parentRef: addon ? addonInfo?.parentRef : undefined,
       breakdown: buildBreakdown(),
       razorpay_order_id: rzp.razorpay_order_id,
       razorpay_payment_id: rzp.razorpay_payment_id,
@@ -332,7 +424,7 @@ export default function RegisterPage() {
 
   // Final step (Payment) — open Razorpay Checkout for the amount due.
   const payWithRazorpay = async () => {
-    if (!category) return;
+    if (!addon && !category) return;
     setPayError("");
 
     // Charge the GST-inclusive grand total (INR).
@@ -347,6 +439,31 @@ export default function RegisterPage() {
       const ready = await loadRazorpay();
       if (!ready) { setPayError("Couldn't load the payment gateway. Check your connection and retry."); return; }
 
+      // Save a PENDING registration before payment so admins can follow up on
+      // people who reach checkout but don't complete. Skipped for add-ons (those
+      // merge into the existing registration on success). This also enforces the
+      // one-conference-per-person rule: the server rejects a second full one.
+      if (!addon) {
+        const lead = await apiCreateRegistration({
+          reference: regId,
+          name: form.name, email: form.email,
+          phone: `+${form.dialCode} ${form.phone}`.trim(),
+          designation: form.designation, institution: form.institution,
+          address: form.address, mciNumber: form.mciNumber, mciState: form.mciState,
+          category, ltsiMemberNo: form.ltsiMemberNo,
+          workshops, guests: validGuests, currency: confCurrency,
+          totalAmount: grandTotalWithGst, phase: phase.key,
+          regType: "full",
+        });
+        if (lead && lead.status === 409) {
+          setPayError(
+            (lead.errors && lead.errors[0]) ||
+            "You already have a conference registration. Use “Add workshops” instead."
+          );
+          return; // stop — the finally block resets the paying state
+        }
+      }
+
       const order = await apiCreatePaymentOrder({ amount: amountInr, currency: "₹", reference: regId });
       if (!order.ok || !order.orderId) {
         setPayError((order.errors && order.errors.join(" ")) || "Couldn't start the payment. Please try again.");
@@ -358,7 +475,7 @@ export default function RegisterPage() {
         amount: order.amount,
         currency: order.currency,
         name: "LTSICON Chennai 2026",
-        description: `Delegate registration ${regId}`,
+        description: `Registration ${regId}`,
         order_id: order.orderId,
         prefill: {
           name: form.name,
@@ -372,6 +489,9 @@ export default function RegisterPage() {
       rzp.on("payment.failed", (resp) => {
         setPaying(false);
         setPayError(resp?.error?.description || "Payment failed. Please try again.");
+        // Record the failure so it shows under the admin "failed" filter for follow-up.
+        // (Only for full registrations — add-ons have no separate row.)
+        if (!addon) apiMarkRegistrationFailed(regId).catch(() => {});
       });
       rzp.open();
     } catch {
@@ -417,16 +537,41 @@ export default function RegisterPage() {
               <span className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#8A6A12]">
                 <span className="h-px w-6 bg-[#8A6A12]" /> LTSICON Chennai 2026 · Registration
               </span>
-              <h1 className="mt-2 font-serif text-3xl font-bold text-[#6E1A2B] sm:text-4xl">Delegate Registration</h1>
+              <h1 className="mt-2 font-serif text-3xl font-bold text-[#6E1A2B] sm:text-4xl">Registration</h1>
               <p className="mt-1.5 text-sm text-[#6E5C54]">
-                Pricing phase: <b className="text-[#6E1A2B]">{phase.label}</b> · Reference: <b className="text-[#6E1A2B]">{regId}</b>
+                Pricing phase: <b className="text-[#6E1A2B]">{phase.label}</b> · Reference: <b className="text-[#6E1A2B]">{addon ? (addonInfo?.parentRef || regId) : regId}</b>
               </p>
             </div>
 
             <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
-              <Stepper step={step} onJump={(n) => n < step && setStep(n)} />
+              <Stepper step={step} onJump={(n) => n < step && (!addon || n >= 3) && setStep(n)} />
 
               <div className="rounded-2xl border border-[#E7D9BB] bg-white p-6 shadow-[0_18px_50px_-30px_rgba(110,26,43,0.5)] sm:p-8">
+                {/* Returning paid delegate — offer a workshops-only add-on purchase. */}
+                {!addon && !submitted && !paid && addonInfo?.registered && (
+                  <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#C9A227]/50 bg-[#FBF5E9] p-4">
+                    <div>
+                      <p className="font-semibold text-[#6E1A2B]">You're already registered{addonInfo.category ? ` as ${addonInfo.category}` : ""}.</p>
+                      <p className="text-sm text-[#6E5C54]">Need to add a workshop to your existing registration? You won't pay for the category again.</p>
+                    </div>
+                    <button type="button" onClick={startAddon} className="shrink-0 rounded-full bg-[#6E1A2B] px-5 py-2.5 text-sm font-semibold text-[#FBF1DD] transition hover:bg-[#4A1220]">
+                      Add workshops
+                    </button>
+                  </div>
+                )}
+
+                {/* Active add-on mode indicator. */}
+                {addon && !submitted && !paid && (
+                  <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#C9A227]/50 bg-[#FBF5E9] p-4">
+                    <p className="text-sm text-[#6E5C54]">
+                      <b className="text-[#6E1A2B]">Add-on purchase</b> — adding workshops to registration <b className="text-[#6E1A2B]">{addonInfo?.parentRef || "—"}</b>. Category isn't charged again.
+                    </p>
+                    <button type="button" onClick={cancelAddon} className="shrink-0 text-sm font-semibold text-[#6E1A2B] underline">
+                      Cancel add-on
+                    </button>
+                  </div>
+                )}
+
                 {submitted || paid ? (
                   <div className="py-6 text-center">
                     <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-[#EAF6EC] text-[#1f7a3d]">
@@ -474,38 +619,70 @@ export default function RegisterPage() {
                           <Field label="Address" full>
                             <textarea className={`${inputClass} min-h-[90px]`} value={form.address} onChange={set("address")} placeholder="Correspondence address" />
                           </Field>
-                          <Field label="Create a password" required full name="password" error={errors.password}>
-                            <input type="password" className={errCls(errors.password)} value={form.password} onChange={set("password")} placeholder="Minimum 6 characters — used to log back in" />
-                          </Field>
+                          {!user && (
+                            <Field label="Create a password" required full name="password" error={errors.password}>
+                              <input type="password" className={errCls(errors.password)} value={form.password} onChange={set("password")} placeholder="Minimum 6 characters — used to log back in" />
+                            </Field>
+                          )}
                         </div>
-                        <Step1Nav onCreate={createAndContinue} />
+                        <Step1Nav onCreate={createAndContinue} loggedIn={!!user} />
                       </Section>
                     )}
 
                     {step === 2 && (
-                      <Section title="Step 2 · Delegate Category" desc="Choose your category — the fee updates for the current phase.">
+                      <Section title="Step 2 · Category" desc={categoryLocked ? "Your category is set from your existing registration and can't be changed." : "Choose your category — the fee updates for the current phase."}>
+                        {categoryLocked && (
+                          <p className="mb-4 rounded-xl border border-[#C9A227]/50 bg-[#FBF5E9] px-4 py-3 text-sm text-[#6E5C54]">
+                            🔒 You're already registered as <b className="text-[#6E1A2B]">{category || addonInfo?.category}</b>. Category can't be edited after payment.
+                          </p>
+                        )}
                         <div className="grid gap-3">
                           {Object.entries(RATES).map(([name, r]) => {
                             const selected = category === name;
+                            // When locked, only show the delegate's own category.
+                            if (categoryLocked && !selected) return null;
                             return (
-                              <button key={name} type="button" onClick={() => setCategory(name)}
-                                className={`flex items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${selected ? "border-[#6E1A2B] bg-[#FBF5E9] ring-2 ring-[#C9A227]/30" : "border-[#E7D9BB] bg-white hover:border-[#C9A227]"}`}>
-                                <span className="flex items-center gap-3">
-                                  <span className={`grid h-5 w-5 place-items-center rounded-full border-2 ${selected ? "border-[#6E1A2B]" : "border-[#C9A227]"}`}>
-                                    {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#6E1A2B]" />}
+                              <div key={name}>
+                                <button type="button"
+                                  disabled={categoryLocked}
+                                  onClick={() => { if (!categoryLocked) setCategory(name); }}
+                                  className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${selected ? "border-[#6E1A2B] bg-[#FBF5E9] ring-2 ring-[#C9A227]/30" : "border-[#E7D9BB] bg-white hover:border-[#C9A227]"} ${categoryLocked ? "cursor-not-allowed" : ""}`}>
+                                  <span className="flex items-center gap-3">
+                                    <span className={`grid h-5 w-5 place-items-center rounded-full border-2 ${selected ? "border-[#6E1A2B]" : "border-[#C9A227]"}`}>
+                                      {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#6E1A2B]" />}
+                                    </span>
+                                    <span className="font-semibold text-[#1D1D1F]">{name}</span>
                                   </span>
-                                  <span className="font-semibold text-[#1D1D1F]">{name}</span>
-                                </span>
-                                <span className="text-right">
-                                  <b className="block text-[#6E1A2B]">{money(r.currency, r[phase.key])}</b>
-                                  <span className="text-[0.7rem] uppercase tracking-wide text-[#8A6A12]">{phase.label}</span>
-                                </span>
-                              </button>
+                                  <span className="text-right">
+                                    <b className="block text-[#6E1A2B]">{money(r.currency, r[phase.key])}</b>
+                                    <span className="text-[0.7rem] uppercase tracking-wide text-[#8A6A12]">{phase.label}</span>
+                                  </span>
+                                </button>
+                                {/* LTSI membership number — only for the LTSI Member category. */}
+                                {selected && name === "LTSI Member" && (
+                                  <div className="mt-2 rounded-2xl border border-[#E7D9BB] bg-[#FBF5E9] p-4">
+                                    <label className={labelClass} htmlFor="ltsi-member-no">
+                                      LTSI Membership No <span className="text-[#B58A1E]">*</span>
+                                    </label>
+                                    <input
+                                      id="ltsi-member-no"
+                                      type="text"
+                                      value={form.ltsiMemberNo}
+                                      onChange={set("ltsiMemberNo")}
+                                      readOnly={categoryLocked}
+                                      placeholder="Enter your LTSI membership number"
+                                      className={`${inputClass} ${categoryLocked ? "bg-[#F4ECD9] cursor-not-allowed" : ""}`}
+                                    />
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
-                        <p className="mt-4 text-sm text-[#6E5C54]">Includes all scientific sessions, conference kit, lunches and a certificate of participation.</p>
-                        <Nav onBack={back} onNext={next} nextDisabled={!category} />
+                        {!categoryLocked && (
+                          <p className="mt-4 text-sm text-[#6E5C54]">Includes all scientific sessions, conference kit, lunches and a certificate of participation.</p>
+                        )}
+                        <Nav onBack={back} onNext={next} nextDisabled={!category || (category === "LTSI Member" && !form.ltsiMemberNo.trim())} />
                       </Section>
                     )}
 
@@ -514,15 +691,20 @@ export default function RegisterPage() {
                         <div className="grid gap-3">
                           {WORKSHOPS.map((w) => {
                             const selected = workshops.includes(w.name);
+                            const already = addon && purchasedWorkshops.includes(w.name);
                             return (
                               <button key={w.name} type="button"
-                                onClick={() => setWorkshops((p) => p.includes(w.name) ? p.filter((x) => x !== w.name) : [...p, w.name])}
-                                className={`flex items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${selected ? "border-[#6E1A2B] bg-[#FBF5E9]" : "border-[#E7D9BB] bg-white hover:border-[#C9A227]"}`}>
+                                disabled={already}
+                                onClick={() => { if (already) return; setWorkshops((p) => p.includes(w.name) ? p.filter((x) => x !== w.name) : [...p, w.name]); }}
+                                className={`flex items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${already ? "cursor-not-allowed border-[#E7D9BB] bg-[#F4ECD9] opacity-70" : selected ? "border-[#6E1A2B] bg-[#FBF5E9]" : "border-[#E7D9BB] bg-white hover:border-[#C9A227]"}`}>
                                 <span className="flex items-center gap-3">
-                                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 ${selected ? "border-[#6E1A2B] bg-[#6E1A2B]" : "border-[#C9A227]"}`}>
-                                    {selected && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M20 6 9 17l-5-5" /></svg>}
+                                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 ${selected && !already ? "border-[#6E1A2B] bg-[#6E1A2B]" : "border-[#C9A227]"}`}>
+                                    {selected && !already && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M20 6 9 17l-5-5" /></svg>}
                                   </span>
-                                  <span className="font-medium text-[#1D1D1F]">{w.name}</span>
+                                  <span className="font-medium text-[#1D1D1F]">
+                                    {w.name}
+                                    {already && <span className="ml-2 rounded bg-[#C9A227]/25 px-2 py-0.5 text-[0.7rem] font-semibold text-[#8A6A12]">Already purchased</span>}
+                                  </span>
                                 </span>
                                 <span className="shrink-0 font-semibold text-[#6E1A2B]">{money(WS_CUR, w.amount)}</span>
                               </button>
@@ -539,6 +721,21 @@ export default function RegisterPage() {
 
                     {step === 4 && (
                       <Section title="Step 4 · Accompanying Persons" desc={`Add up to 4 guests. Each is charged ${money(ACCOMPANYING.currency, guestUnit)} (${phase.label}).`}>
+                        {/* Existing accompanying persons already on the registration (add-on flow). */}
+                        {addon && (addonInfo?.existingGuests || []).length > 0 && (
+                          <div className="mb-4 rounded-2xl border border-[#E7D9BB] bg-[#F4ECD9] p-4">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8A6A12]">Already added</p>
+                            <ul className="space-y-1">
+                              {addonInfo.existingGuests.map((g, i) => (
+                                <li key={i} className="text-sm text-[#33242A]">
+                                  {g.name}{g.mobile ? ` · ${g.mobile}` : ""}
+                                  <span className="ml-2 rounded bg-[#C9A227]/25 px-2 py-0.5 text-[0.7rem] font-semibold text-[#8A6A12]">Already added</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-xs text-[#6E5C54]">Add any new accompanying persons below — you won't be charged again for the ones above.</p>
+                          </div>
+                        )}
                         <div className="space-y-3">
                           {guests.map((g, i) => (
                             <div key={i} className="grid gap-3 rounded-2xl border border-[#E7D9BB] bg-[#FBF5E9] p-4 sm:grid-cols-[1fr_1fr_auto]">
@@ -614,7 +811,7 @@ export default function RegisterPage() {
                           </p>
                         )}
                         <p className="mt-3 text-xs text-[#6E5C54]">Amounts shown for the {phase.label} phase.</p>
-                        <Nav onBack={back} onNext={next} nextLabel="Continue to payment" nextDisabled={!category} />
+                        <Nav onBack={back} onNext={next} nextLabel="Continue to payment" nextDisabled={addon ? subtotalAmount <= 0 : !category} />
                       </Section>
                     )}
 
@@ -633,10 +830,22 @@ export default function RegisterPage() {
                           <p className="mb-4 rounded-lg bg-[#FBEBEB] px-3 py-2 text-sm font-medium text-[#B3261E]">{payError}</p>
                         )}
 
+                        {/* One conference per person: block a second full registration. */}
+                        {!addon && addonInfo?.registered && (
+                          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#C9A227]/50 bg-[#FBF5E9] p-4">
+                            <p className="text-sm text-[#6E5C54]">
+                              You already have a conference registration (<b className="text-[#6E1A2B]">{addonInfo.parentRef}</b>). Only one is allowed per person — you can add workshops instead.
+                            </p>
+                            <button type="button" onClick={startAddon} className="shrink-0 rounded-full bg-[#6E1A2B] px-5 py-2.5 text-sm font-semibold text-[#FBF1DD] hover:bg-[#4A1220]">
+                              Add workshops
+                            </button>
+                          </div>
+                        )}
+
                         <button
                           type="button"
                           onClick={payWithRazorpay}
-                          disabled={paying || !category}
+                          disabled={paying || (addon ? grandTotalWithGst <= 0 : (!category || !!addonInfo?.registered))}
                           className="flex w-full items-center justify-center gap-2 rounded-full bg-[#6E1A2B] px-6 py-3.5 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
@@ -852,14 +1061,14 @@ function Field({ label, required, full, children, error, name }) {
   );
 }
 
-function Step1Nav({ onCreate }) {
+function Step1Nav({ onCreate, loggedIn }) {
   // Always clickable — clicking with empty fields surfaces the inline errors
   // rather than leaving the delegate with a dead, greyed-out button.
   return (
     <div className="mt-8 flex items-center justify-end">
       <button type="button" onClick={onCreate}
         className="inline-flex items-center gap-1.5 cursor-pointer rounded-full bg-[#6E1A2B] px-7 py-3 text-sm font-semibold text-[#FBF1DD] transition hover:-translate-y-0.5 hover:bg-[#4A1220]">
-        Create account & continue
+        {loggedIn ? "Save & continue" : "Create account & continue"}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
       </button>
     </div>

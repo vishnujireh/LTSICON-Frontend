@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Logo from '../../public/logo.svg';
 import itlogo from '../../public/logo-r.png';
 import { openRegister } from './RegisterModal.jsx';
-import { getCurrentUser, onAuthChange } from '../lib/auth.js';
+import { getCurrentUser, onAuthChange } from '../lib/serverAuth.js';
 import ProfileMenu from './ProfileMenu.jsx';
 
 const links = [

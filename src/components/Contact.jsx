@@ -14,6 +14,7 @@ export default function Contact() {
 Apollo Hospitals, No. 21, Greams Lane,
 Off. Greams Road, Chennai - 600006.</p>
             <p className="mt-4 text-[#6E5C54]">☎ +91 7358121066</p>
+            <p className="mt-4 text-[#6E5C54]">☎ +91 6207265423 <small>(For Registration Related Queries)</small></p>
             <p className="mt-4 text-[#6E5C54]">✉ Ltsicon2026@gmail.com </p>
             {/* ✉ abstracts@ltsicon2026.com */}
           </div>

@@ -8,11 +8,24 @@
 
 const API_BASE = import.meta.env?.VITE_API_BASE || "";
 
-async function request(path, { method = "POST", body, isForm = false } = {}) {
+// Read the login token (shared with serverAuth.js) for authed calls.
+function authHeader() {
+  try {
+    const t = localStorage.getItem("ltsi_token");
+    return t ? { authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function request(path, { method = "POST", body, isForm = false, auth = false } = {}) {
   try {
     const res = await fetch(`${API_BASE}/api${path}`, {
       method,
-      headers: isForm ? undefined : { "content-type": "application/json" },
+      headers: {
+        ...(isForm ? {} : { "content-type": "application/json" }),
+        ...(auth ? authHeader() : {}),
+      },
       body: isForm ? body : body ? JSON.stringify(body) : undefined,
     });
     let data = null;
@@ -51,6 +64,16 @@ export function submitAbstract(fields) {
 /** Step 1 lead capture. */
 export function createRegistration(payload) {
   return request("/registrations", { body: payload });
+}
+
+/** For the logged-in delegate: existing paid registration + purchased workshops. */
+export function myRegistrationSummary() {
+  return request("/registrations/my-summary", { method: "GET", auth: true });
+}
+
+/** Mark a pending registration as failed (called when a Razorpay payment fails). */
+export function markRegistrationFailed(reference) {
+  return request(`/registrations/${encodeURIComponent(reference)}/fail`, { method: "PUT" });
 }
 
 /** Create a Razorpay order for the given amount (major units, e.g. rupees). */

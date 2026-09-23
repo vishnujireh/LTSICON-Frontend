@@ -1,9 +1,13 @@
 import { useState } from "react";
 import Logo from "../../public/logo.svg";
 import { resetPassword } from "../lib/serverAuth.js";
+import { navigate } from "../lib/nav.js";
 
-// Parse ?token=... from the hash route (#reset?token=abc).
-function getTokenFromHash() {
+// Parse ?token=... from the path route (/reset?token=abc). Falls back to the
+// old hash form (#reset?token=abc) so links already sent by email still work.
+function getToken() {
+  const fromQuery = new URLSearchParams(window.location.search).get("token");
+  if (fromQuery) return fromQuery;
   const hash = window.location.hash || "";
   const qs = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
   return new URLSearchParams(qs).get("token") || "";
@@ -13,14 +17,14 @@ const inputClass =
   "w-full rounded-xl border border-[#E7D9BB] bg-white px-4 py-3 text-base text-[#33242A] outline-none transition focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/30 sm:text-sm";
 
 export default function ResetPassword() {
-  const [token] = useState(getTokenFromHash);
+  const [token] = useState(getToken);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [status, setStatus] = useState("idle"); // idle | submitting | done | error
   const [message, setMessage] = useState("");
 
-  const goHome = () => { window.location.hash = ""; };
-  const goLogin = () => { window.location.hash = "register"; };
+  const goHome = () => { navigate("/"); };
+  const goLogin = () => { navigate("/register"); };
 
   const submit = async (e) => {
     e.preventDefault();

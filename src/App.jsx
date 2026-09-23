@@ -24,23 +24,32 @@ import CtaTile from './components/CtaTile.jsx';
 import Footer from './components/Footer.jsx';
 import RegisterPage from './components/RegisterPage.jsx';
 import ResetPassword from './components/ResetPassword.jsx';
+import AdminDashboard from './components/AdminDashboard.jsx';
+import { currentPath } from './lib/nav.js';
 import { useEffect, useState } from 'react';
 
 export default function App() {
-  const [route, setRoute] = useState(() => window.location.hash.replace('#', ''));
+  // Path-based routing (clean URLs: /register, /admin, /reset). In-page hash
+  // anchors like #contact still work — they don't change the pathname.
+  const [route, setRoute] = useState(() => currentPath().replace(/^\//, ''));
 
   useEffect(() => {
-    const onHash = () => setRoute(window.location.hash.replace('#', ''));
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    const onNav = () => setRoute(currentPath().replace(/^\//, ''));
+    window.addEventListener('popstate', onNav);
+    return () => window.removeEventListener('popstate', onNav);
   }, []);
 
   if (route === 'register') {
     return <RegisterPage />;
   }
 
-  // #reset?token=... — password reset landing from the email link.
-  if (route.split('?')[0] === 'reset') {
+  // /admin — hidden, unlinked admin dashboard (real protection is server-side).
+  if (route === 'admin') {
+    return <AdminDashboard />;
+  }
+
+  // /reset?token=... — password reset landing from the email link.
+  if (route === 'reset') {
     return <ResetPassword />;
   }
 

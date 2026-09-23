@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { logout } from "../lib/serverAuth.js";
+import { navigate } from "../lib/nav.js";
 
 // Profile dropdown shown in the top bar when a delegate is logged in.
 export default function ProfileMenu({ user, compact = false }) {
@@ -21,8 +22,7 @@ export default function ProfileMenu({ user, compact = false }) {
 
   const goRegister = () => {
     setOpen(false);
-    if (window.location.hash !== "#register") window.location.hash = "#register";
-    window.scrollTo({ top: 0 });
+    navigate("/register");
   };
 
   return (
@@ -49,7 +49,7 @@ export default function ProfileMenu({ user, compact = false }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-[#8A6A12]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 15h6" /></svg>
             My Registration
           </button>
-          <button role="menuitem" onClick={() => { setOpen(false); logout(); }} className="flex w-full items-center gap-3 border-t border-[#EDEDF0] px-4 py-3 text-left text-sm font-medium text-[#6E1A2B] transition hover:bg-[#FBF5E9]">
+          <button role="menuitem" onClick={() => { setOpen(false); logout(); window.location.href = "/"; }} className="flex w-full items-center gap-3 border-t border-[#EDEDF0] px-4 py-3 text-left text-sm font-medium text-[#6E1A2B] transition hover:bg-[#FBF5E9]">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>
             Logout
           </button>

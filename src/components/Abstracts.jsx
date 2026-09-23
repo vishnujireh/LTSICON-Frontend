@@ -30,7 +30,7 @@ const categories = [
       "8-minute podium presentation followed by 2 minutes of discussion.",
       "PowerPoint (16:9) to be uploaded at the speaker-ready desk at least 3 hours before the session.",
       "Selected for the main hall and considered for the Best Oral Paper award.",
-      "Structured abstract required: Background, Methods, Results, Conclusion (max 300 words).",
+      "Structured abstract required: Background, Methods, Results, Conclusion (max 250 words).",
     ],
   },
   {
@@ -273,7 +273,7 @@ function SubmissionForm() {
         </label>
         <label className="md:col-span-2 flex flex-col gap-2 text-sm font-semibold text-[#1D1D1F]">
           <span>Abstract body</span>
-          <textarea value={form.abstractBody} onChange={set("abstractBody")} placeholder="Background, Methods, Results, Conclusion (max 300 words)" className="min-h-[140px] rounded-[12px] border border-[#D2D2D7] bg-white px-4 py-3 text-base text-[#6E5C54] sm:text-sm" />
+          <textarea value={form.abstractBody} onChange={set("abstractBody")} placeholder="Background, Methods, Results, Conclusion (max 250 words)" className="min-h-[140px] rounded-[12px] border border-[#D2D2D7] bg-white px-4 py-3 text-base text-[#6E5C54] sm:text-sm" />
         </label>
         <label className="flex flex-col gap-2 text-sm font-semibold text-[#1D1D1F]">
           <span>Keywords</span>
@@ -341,7 +341,7 @@ export default function Abstracts() {
                 ["Submission Opens", "1 August 2026"],
                 ["Submission Closes", "30 September 2026"],
                 ["Acceptance Notified", "10 October 2026"],
-                ["Word Limit", "300 words"],
+                ["Word Limit", "250 words"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-4 border-b border-white/10 py-4">
                   <span className="text-white/70">{label}</span>

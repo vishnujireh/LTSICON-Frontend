@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
+import { navigate } from "../lib/nav.js";
 
 export function openRegister() {
-  // Navigate to the dedicated multi-step registration page.
-  if (window.location.hash !== "#register") {
-    window.location.hash = "#register";
-  }
-  window.scrollTo({ top: 0, behavior: "auto" });
+  // Navigate to the dedicated multi-step registration page (clean URL /register).
+  navigate("/register");
 }
 
 const inputClass =
