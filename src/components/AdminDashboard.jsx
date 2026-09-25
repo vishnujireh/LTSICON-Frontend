@@ -12,6 +12,8 @@ import {
   exportAbstractsCsv,
   abstractFileUrl,
   downloadRegistrationInvoice,
+  downloadPaymentInvoice,
+  exportReviewsCsv,
 } from "../lib/adminApi.js";
 
 // ── Small UI helpers ──────────────────────────────────
@@ -204,7 +206,7 @@ export default function AdminDashboard() {
       <main className="mx-auto max-w-7xl px-4 pt-6 sm:px-5 sm:pt-8 lg:px-10">
         {/* Tabs */}
         <div className="flex gap-2 border-b border-[#E7D9BB]">
-          {[["registrations", "Registrations"], ["abstracts", "Abstracts"]].map(([k, label]) => (
+          {[["registrations", "Registrations"], ["abstracts", "Abstracts"], ["reviewers", "Reviewers"]].map(([k, label]) => (
             <button
               key={k}
               onClick={() => setTab(k)}
@@ -219,8 +221,10 @@ export default function AdminDashboard() {
 
         {tab === "registrations" ? (
           <RegistrationsTab summary={summary} dupEmails={dupes.registrations.emails} />
-        ) : (
+        ) : tab === "abstracts" ? (
           <AbstractsTab summary={summary} dupTitles={dupes.abstracts.titles} />
+        ) : (
+          <ReviewersTab />
         )}
       </main>
     </div>
@@ -260,6 +264,19 @@ function RegistrationsTab({ summary, dupEmails }) {
         ? { ok: true, text: `Confirmation email re-sent to ${res.to}.` }
         : { ok: false, text: (res.errors && res.errors[0]) || `Could not send (status: ${res.emailStatus || "failed"}).` }
     );
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const remove = async (row) => {
+    const label = row.order_no || row.reference || `#${row.id}`;
+    if (!window.confirm(`Delete registration ${label} (${row.name})? This permanently removes it and cannot be undone.`)) return;
+    const res = await adminApi.deleteRegistration(row.id);
+    if (res.ok) {
+      setToast({ ok: true, text: `Registration ${label} deleted.` });
+      load();
+    } else {
+      setToast({ ok: false, text: (res.errors && res.errors[0]) || "Could not delete." });
+    }
     setTimeout(() => setToast(null), 5000);
   };
 
@@ -356,6 +373,12 @@ function RegistrationsTab({ summary, dupEmails }) {
                       >
                         {resendId === r.id ? "Sending…" : "Resend"}
                       </button>
+                      <button
+                        onClick={() => remove(r)}
+                        className="text-xs font-semibold text-red-700 underline cursor-pointer"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -375,16 +398,8 @@ function RegistrationDetail({ registration: r, onBack }) {
   const cur = r.currency;
   return (
     <div className="mt-6">
-      {/* Header: actions on the right */}
+      {/* Header: back on the right. Invoices are downloaded per payment below. */}
       <div className="mb-4 flex items-center justify-end gap-2">
-        {r.payment_status === "paid" && (
-          <button
-            onClick={() => downloadRegistrationInvoice(r.id)}
-            className="inline-flex items-center gap-1 rounded-full border border-[#6E1A2B] bg-white px-4 py-2 text-sm font-semibold text-[#6E1A2B] hover:bg-[#6E1A2B] hover:text-[#FBF1DD] cursor-pointer"
-          >
-            ↓ Invoice
-          </button>
-        )}
         <button
           onClick={onBack}
           className="inline-flex items-center gap-1 rounded-full border border-[#E7D9BB] bg-white px-4 py-2 text-sm font-semibold text-[#6E1A2B] hover:bg-[#F4ECD9] cursor-pointer"
@@ -453,7 +468,7 @@ function RegistrationDetail({ registration: r, onBack }) {
             <div className="mt-4 overflow-x-auto">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8A6A12]">Payment breakdown (all payments)</p>
               <div className="overflow-hidden rounded-xl border border-[#E7D9BB]">
-                <table className="w-full min-w-[640px] text-left text-sm">
+                <table className="w-full min-w-[760px] text-left text-sm">
                   <thead className="bg-[#F5F0E3] text-xs uppercase tracking-wide text-[#8A6A12]">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Date</th>
@@ -462,6 +477,7 @@ function RegistrationDetail({ registration: r, onBack }) {
                       <th className="px-3 py-2 font-semibold">GST (18%)</th>
                       <th className="px-3 py-2 font-semibold">Total</th>
                       <th className="px-3 py-2 font-semibold">Payment ID</th>
+                      <th className="px-3 py-2 font-semibold">Invoice</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -472,6 +488,9 @@ function RegistrationDetail({ registration: r, onBack }) {
                       <td className="px-3 py-2">{money(baseGst, cur)}</td>
                       <td className="px-3 py-2">{money(baseTot, cur)}</td>
                       <td className="px-3 py-2 font-mono text-xs">{r.razorpay_payment_id || "—"}</td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => downloadRegistrationInvoice(r.id)} className="text-xs font-semibold text-[#6E1A2B] underline cursor-pointer">↓ Download</button>
+                      </td>
                     </tr>
                     {addons.map((p, i) => (
                       <tr key={i} className="border-t border-[#F0E7D3] bg-[#FBF7EC]">
@@ -486,6 +505,11 @@ function RegistrationDetail({ registration: r, onBack }) {
                         <td className="px-3 py-2">{money(p.gst, cur)}</td>
                         <td className="px-3 py-2">{money(p.total, cur)}</td>
                         <td className="px-3 py-2 font-mono text-xs">{p.payment_id || "—"}</td>
+                        <td className="px-3 py-2">
+                          {p.payment_id
+                            ? <button onClick={() => downloadPaymentInvoice(r.id, p.payment_id)} className="text-xs font-semibold text-[#6E1A2B] underline cursor-pointer">↓ Download</button>
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-[#C9A227]/50 bg-[#F5F0E3] font-semibold text-[#6E1A2B]">
@@ -493,7 +517,7 @@ function RegistrationDetail({ registration: r, onBack }) {
                       <td className="px-3 py-2">{money(r.subtotal, cur)}</td>
                       <td className="px-3 py-2">{money(r.gst_amount, cur)}</td>
                       <td className="px-3 py-2">{money(r.total_amount, cur)}</td>
-                      <td className="px-3 py-2" />
+                      <td className="px-3 py-2" colSpan={2} />
                     </tr>
                   </tbody>
                 </table>
@@ -791,11 +815,233 @@ function AbstractAuthorDetail({ detail, dupTitles, onBack }) {
                   ) : null}
 
                   <StatusEditor abstract={a} onSaved={onSaved} />
+                  <AbstractReviewPanel abstract={a} />
                 </div>
               ) : null}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Per-abstract reviewer assignment + review monitoring (admin) ──
+function AbstractReviewPanel({ abstract }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
+  const [reviewers, setReviewers] = useState([]);
+  const [pick, setPick] = useState([]);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await adminApi.abstractReviews(abstract.id);
+    setLoading(false);
+    if (res.ok) setData(res);
+  }, [abstract.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const openAssign = async () => {
+    setAssigning(true); setPick([]); setMsg(null);
+    const res = await adminApi.reviewers({ status: "active" });
+    if (res.ok) setReviewers(res.rows);
+  };
+  const doAssign = async () => {
+    if (!pick.length) { setMsg({ ok: false, text: "Select at least one reviewer." }); return; }
+    const res = await adminApi.assignReviewers(abstract.id, pick);
+    if (res.ok) { setAssigning(false); load(); } else setMsg({ ok: false, text: (res.errors && res.errors[0]) || "Failed." });
+  };
+  const remove = async (reviewerId) => {
+    if (!window.confirm("Remove this reviewer from the abstract? A submitted review is preserved but taken out of the active set.")) return;
+    const res = await adminApi.removeReviewer(abstract.id, reviewerId);
+    if (res.ok) load();
+  };
+
+  const critById = {};
+  (data?.criteria || []).forEach((c) => { critById[c.id] = c; });
+  const already = new Set((data?.reviews || []).map((r) => r.reviewer_id));
+
+  return (
+    <div className="mt-5 rounded-xl border border-[#E7D9BB] bg-[#FBF7EC] p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#8A6A12]">Reviewers & Reviews</p>
+        <button onClick={openAssign} className="rounded-lg bg-[#6E1A2B] px-3 py-1.5 text-xs font-semibold text-[#FBF1DD] hover:bg-[#4A1220] cursor-pointer">+ Assign reviewer</button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-[#6E5C54]">Loading…</p>
+      ) : !data || data.reviews.length === 0 ? (
+        <p className="text-sm text-[#6E5C54]">No reviewers assigned yet.</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-3 text-xs text-[#6E5C54]">
+            <span>Assigned: <b>{data.summary.total}</b></span>
+            <span>Completed: <b className="text-green-700">{data.summary.completed}</b></span>
+            <span>Pending: <b className="text-amber-700">{data.summary.pending}</b></span>
+            <span>COI: <b className="text-orange-700">{data.summary.coi}</b></span>
+            <span>Avg score: <b>{data.summary.averageScore != null ? `${data.summary.averageScore} / 15` : "—"}</b></span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-[#E7D9BB] bg-white">
+            <table className="w-full min-w-[520px] text-left text-sm">
+              <thead className="bg-[#F5F0E3] text-xs uppercase tracking-wide text-[#8A6A12]">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Judge</th>
+                  <th className="px-3 py-2 font-semibold">Status</th>
+                  <th className="px-3 py-2 font-semibold">Score</th>
+                  <th className="px-3 py-2 font-semibold">Details</th>
+                  <th className="px-3 py-2 font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.reviews.map((r) => (
+                  <tr key={r.assignment_id} className="border-t border-[#F0E7D3] align-top">
+                    <td className="px-3 py-2">{r.reviewer_name}<div className="font-mono text-[10px] text-[#6E5C54]">{r.reviewer_code}</div></td>
+                    <td className="px-3 py-2"><StatusPill status={r.review_status} /></td>
+                    <td className="px-3 py-2">{r.review_status === "completed" && r.total_score != null ? `${r.total_score} / 15` : "—"}</td>
+                    <td className="px-3 py-2 text-xs text-[#6E5C54]">
+                      {r.review_status === "coi" ? <span className="text-orange-700">COI: {r.coi_reason}</span> : null}
+                      {r.review_status === "completed" ? (
+                        <>
+                          {(r.scores || []).map((s) => `${critById[s.criterion_id]?.name || s.criterion_id}: ${s.score}`).join(", ")}
+                          {r.comments ? <div className="mt-0.5">“{r.comments}”</div> : null}
+                          {r.recommended_category ? <div className="mt-0.5">Rec: {r.recommended_category}</div> : null}
+                        </>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button onClick={() => remove(r.reviewer_id)} className="text-xs font-semibold text-red-700 underline cursor-pointer">Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {assigning ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setAssigning(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-[#6E1A2B]">Assign reviewers</h3>
+            <p className="mt-0.5 text-xs text-[#6E5C54]">{abstract.abstract_no} · {abstract.title}</p>
+            {msg ? <p className="mt-2 text-sm text-red-700">{msg.text}</p> : null}
+            <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-[#E7D9BB]">
+              {reviewers.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-[#6E5C54]">No active reviewers. Add reviewers in the Reviewers tab first.</p>
+              ) : reviewers.map((rv) => {
+                const isSet = already.has(rv.id);
+                return (
+                  <label key={rv.id} className={`flex items-center gap-2 border-b border-[#F0E7D3] px-3 py-2 text-sm ${isSet ? "opacity-50" : "cursor-pointer"}`}>
+                    <input type="checkbox" disabled={isSet} checked={isSet || pick.includes(rv.id)}
+                      onChange={(e) => setPick((p) => e.target.checked ? [...p, rv.id] : p.filter((x) => x !== rv.id))} />
+                    <span className="flex-1">{rv.name} <span className="text-xs text-[#6E5C54]">({rv.email})</span></span>
+                    {isSet ? <span className="text-[10px] font-semibold text-[#8A6A12]">Assigned</span> : null}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={doAssign} className="rounded-lg bg-[#6E1A2B] px-5 py-2 text-sm font-semibold text-[#FBF1DD] hover:bg-[#4A1220] cursor-pointer">Assign</button>
+              <button onClick={() => setAssigning(false)} className="rounded-lg border border-[#E7D9BB] px-5 py-2 text-sm font-semibold text-[#6E5C54] cursor-pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Reviewers management tab ────────────────────────────
+function ReviewersTab() {
+  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: "", email: "" });
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [r, s] = await Promise.all([adminApi.reviewers(), adminApi.reviewSummary()]);
+    setLoading(false);
+    if (r.ok) setRows(r.rows);
+    if (s.ok) setSummary(s);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const add = async () => {
+    setMsg(null);
+    if (!form.name.trim() || !form.email.trim()) { setMsg({ ok: false, text: "Name and email are required." }); return; }
+    const res = await adminApi.createReviewer({ name: form.name, email: form.email });
+    if (res.ok) { setForm({ name: "", email: "" }); setMsg({ ok: true, text: "Reviewer added." }); load(); }
+    else setMsg({ ok: false, text: (res.errors && res.errors[0]) || "Failed." });
+  };
+  const toggle = async (rv) => {
+    const res = await adminApi.updateReviewer(rv.id, { status: rv.status === "active" ? "inactive" : "active" });
+    if (res.ok) load();
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Card label="Active Reviewers" value={summary?.activeReviewers ?? "—"} />
+        <Card label="Assignments" value={summary?.assignments ?? "—"} />
+        <Card label="Completed" value={summary?.completed ?? "—"} />
+        <Card label="Pending / COI" value={summary ? `${summary.pending} / ${summary.coi}` : "—"} />
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-[#E7D9BB] bg-white p-4">
+        <div className="flex-1 min-w-[160px]">
+          <label className="mb-1 block text-xs font-semibold text-[#6E1A2B]">Name</label>
+          <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="w-full rounded-lg border border-[#E7D9BB] px-3 py-2 text-sm" />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="mb-1 block text-xs font-semibold text-[#6E1A2B]">Email</label>
+          <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border border-[#E7D9BB] px-3 py-2 text-sm" />
+        </div>
+        <button onClick={add} className="rounded-lg bg-[#6E1A2B] px-5 py-2 text-sm font-semibold text-[#FBF1DD] hover:bg-[#4A1220] cursor-pointer">Add reviewer</button>
+        <button onClick={() => exportReviewsCsv()} className="rounded-lg border border-[#6E1A2B] px-5 py-2 text-sm font-semibold text-[#6E1A2B] hover:bg-[#6E1A2B] hover:text-[#FBF1DD] cursor-pointer">↓ Export reviews</button>
+      </div>
+      {msg ? <p className={`mb-3 text-sm font-medium ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</p> : null}
+
+      <div className="overflow-x-auto rounded-2xl border border-[#E7D9BB] bg-white">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="bg-[#F5F0E3] text-xs uppercase tracking-wide text-[#8A6A12]">
+            <tr>
+              {["Code", "Name", "Email", "Assigned", "Pending", "Completed", "COI", "Status", "Action"].map((h) => (
+                <th key={h} className="px-4 py-3 font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[#6E5C54]">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[#6E5C54]">No reviewers yet.</td></tr>
+            ) : (
+              rows.map((rv) => (
+                <tr key={rv.id} className="border-t border-[#F0E7D3]">
+                  <td className="px-4 py-3 font-mono text-xs">{rv.reviewer_code}</td>
+                  <td className="px-4 py-3 font-medium text-[#33242A]">{rv.name}</td>
+                  <td className="px-4 py-3">{rv.email}</td>
+                  <td className="px-4 py-3">{rv.assigned}</td>
+                  <td className="px-4 py-3 text-amber-700">{rv.pending}</td>
+                  <td className="px-4 py-3 text-green-700">{rv.completed}</td>
+                  <td className="px-4 py-3 text-orange-700">{rv.coi}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rv.status === "active" ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-600"}`}>{rv.status}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => toggle(rv)} className="text-xs font-semibold text-[#6E1A2B] underline cursor-pointer">
+                      {rv.status === "active" ? "Deactivate" : "Activate"}
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

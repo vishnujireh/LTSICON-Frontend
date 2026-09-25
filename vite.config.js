@@ -13,8 +13,8 @@ export default defineConfig({
       // or at the live API as below. changeOrigin rewrites the Host header so
       // the live vhost/CDN accepts the request; secure verifies its TLS cert.
       '/api': {
-        target: 'https://ltsicon2026chennai.com',
-        // target: 'http://localhost:4000',
+         //target: 'https://ltsicon2026chennai.com',
+        target: 'http://localhost:4000',
         changeOrigin: true,
         secure: true,
       },

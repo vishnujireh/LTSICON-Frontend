@@ -25,6 +25,7 @@ import Footer from './components/Footer.jsx';
 import RegisterPage from './components/RegisterPage.jsx';
 import ResetPassword from './components/ResetPassword.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
+import ReviewerPortal from './components/ReviewerPortal.jsx';
 import { currentPath } from './lib/nav.js';
 import { useEffect, useState } from 'react';
 
@@ -46,6 +47,11 @@ export default function App() {
   // /admin — hidden, unlinked admin dashboard (real protection is server-side).
   if (route === 'admin') {
     return <AdminDashboard />;
+  }
+
+  // /reviewer — abstract review portal (OTP login; protection is server-side).
+  if (route === 'reviewer') {
+    return <ReviewerPortal />;
   }
 
   // /reset?token=... — password reset landing from the email link.

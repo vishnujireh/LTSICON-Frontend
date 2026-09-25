@@ -53,12 +53,24 @@ export const adminApi = {
   registrations: (params) => get("/registrations", params),
   registration: (id) => get(`/registrations/${id}`),
   updateRegistration: (id, body) => send("PUT", `/registrations/${id}`, body),
+  deleteRegistration: (id) => send("DELETE", `/registrations/${id}`, {}),
   resendRegistration: (id) => send("POST", `/registrations/${id}/resend`, {}),
   abstracts: (params) => get("/abstracts", params),
   abstractAuthors: (params) => get("/abstract-authors", params),
   abstract: (id) => get(`/abstracts/${id}`),
   abstractsByEmail: (email) => get(`/abstracts/by-email/${encodeURIComponent(email)}`),
   updateAbstractStatus: (id, body) => send("PUT", `/abstracts/${id}/status`, body),
+
+  // Abstract review module
+  reviewers: (params) => get("/reviewers", params),
+  createReviewer: (body) => send("POST", "/reviewers", body),
+  updateReviewer: (id, body) => send("PATCH", `/reviewers/${id}`, body),
+  reviewerAssignments: (id) => get(`/reviewers/${id}/assignments`),
+  reviewSummary: () => get("/review-summary"),
+  abstractReviews: (abstractId) => get(`/abstracts/${abstractId}/reviews`),
+  assignReviewers: (abstractId, reviewerIds) => send("POST", `/abstracts/${abstractId}/reviewers`, { reviewerIds }),
+  reassignReviewer: (abstractId, reviewerId, toReviewerId) => send("PATCH", `/abstracts/${abstractId}/reviewers/${reviewerId}`, { toReviewerId }),
+  removeReviewer: (abstractId, reviewerId) => send("DELETE", `/abstracts/${abstractId}/reviewers/${reviewerId}`, {}),
 };
 
 // Build an authed download for the CSV exports and the abstract file.
@@ -88,11 +100,19 @@ export function exportRegistrationsCsv(params) {
 export function exportAbstractsCsv(params) {
   return downloadBlob(`${API_BASE}/api/admin/abstracts/export${qs(params)}`, "abstracts.csv");
 }
-// Download the tax invoice PDF for a registration.
+// Download the registration (main) tax invoice PDF.
 export function downloadRegistrationInvoice(id) {
   return downloadBlob(`${API_BASE}/api/admin/registrations/${id}/invoice`, `invoice-${id}.pdf`);
+}
+// Download the invoice for a specific payment (registration or an add-on).
+export function downloadPaymentInvoice(id, paymentId) {
+  return downloadBlob(`${API_BASE}/api/admin/registrations/${id}/invoice/${encodeURIComponent(paymentId)}`, `invoice-${paymentId}.pdf`);
 }
 // Abstract attachment (public download endpoint — no token needed).
 export function abstractFileUrl(fileName) {
   return `${API_BASE}/api/abstracts/file/${encodeURIComponent(fileName)}`;
+}
+// Full review data export (CSV, one row per judge).
+export function exportReviewsCsv() {
+  return downloadBlob(`${API_BASE}/api/admin/review-export`, "abstract-reviews.csv");
 }
